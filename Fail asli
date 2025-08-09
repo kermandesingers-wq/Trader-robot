@@ -1,0 +1,75 @@
+import pandas as pd
+
+# === پارامترها ===
+initial_balance = 50
+risk_per_trade = 0.05        # ریسک هر پوزیشن 5%
+rr_ratios = [2, 3]           # نسبت ریسک به ریوارد ممکن
+spread_pips = 1.5            # اسپرد به پیپ
+commission_per_lot = 7       # کمیسیون (USD per lot round-turn)
+slippage_pips = 0.5          # اسلیپیج به پیپ
+pip_value_per_lot = 10       # ارزش هر پیپ در یک لات استاندارد
+position_size_lots = 0.01    # حجم پایه هر معامله
+
+# === خواندن داده ===
+df = pd.read_csv("USDCAD_M5.csv")
+
+# تلاش برای پیدا کردن ستون های زمان و قیمت
+time_col = [c for c in df.columns if "time" in c.lower()][0]
+open_col = [c for c in df.columns if "open" in c.lower()][0]
+high_col = [c for c in df.columns if "high" in c.lower()][0]
+low_col = [c for c in df.columns if "low" in c.lower()][0]
+close_col = [c for c in df.columns if "close" in c.lower()][0]
+
+df[time_col] = pd.to_datetime(df[time_col])
+df = df.sort_values(time_col).reset_index(drop=True)
+
+# === بک‌تست ===
+balance = initial_balance
+trade_results = []
+
+for i in range(len(df) - 1):
+    rr = rr_ratios[i % len(rr_ratios)]
+    entry_price = df.loc[i, close_col]
+    
+    # تعیین حد ضرر و حد سود
+    stop_loss = entry_price - 0.0010
+    take_profit = entry_price + rr * (entry_price - stop_loss)
+    
+    # شبیه‌سازی نتیجه تصادفی (برد یا باخت)
+    import random
+    win = random.random() < 0.6  # نرخ برد فرضی 60%
+    
+    risk_amount = balance * risk_per_trade
+    lot_size = position_size_lots
+    
+    # هزینه‌ها
+    spread_cost = spread_pips * pip_value_per_lot * lot_size
+    commission_cost = commission_per_lot * lot_size
+    slippage_cost = slippage_pips * pip_value_per_lot * lot_size
+    total_cost = spread_cost + commission_cost + slippage_cost
+    
+    if win:
+        profit = risk_amount * rr - total_cost
+        balance += profit
+    else:
+        loss = risk_amount + total_cost
+        balance -= loss
+    
+    trade_results.append({
+        "time": df.loc[i, time_col],
+        "entry": entry_price,
+        "RR": rr,
+        "win": win,
+        "balance": balance
+    })
+    
+    # در صورت کال مارجین
+    if balance <= 0:
+        break
+
+# === نتیجه نهایی ===
+results_df = pd.DataFrame(trade_results)
+print("تعداد معاملات:", len(results_df))
+print("بردها:", sum(results_df['win']), "باخت‌ها:", len(results_df) - sum(results_df['win']))
+print("موجودی نهایی:", balance)
+print("بازده کل: {:.2f}%".format((balance - initial_balance) / initial_balance * 100))
